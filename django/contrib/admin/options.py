@@ -13,8 +13,9 @@ from django.db import models, transaction, router
 from django.db.models.related import RelatedObject
 from django.db.models.fields import BLANK_CHOICE_DASH, FieldDoesNotExist
 from django.db.models.sql.constants import LOOKUP_SEP, QUERY_TERMS
-from django.http import Http404, HttpResponse, HttpResponseRedirect
+from django.db import models, transaction
 from django.shortcuts import get_object_or_404, render_to_response
+from django.http import Http404, HttpResponse, HttpResponseRedirect, QueryDict
 from django.utils.decorators import method_decorator
 from django.utils.datastructures import SortedDict
 from django.utils.functional import update_wrapper
@@ -707,6 +708,30 @@ class ModelAdmin(BaseModelAdmin):
             "admin/change_form.html"
         ], context, context_instance=context_instance)
 
+    def url_with_querystring(self, request, url=None):
+        """
+        Returns a URL with the query string preserved from the current request.
+        """
+        if url is None:
+            url = request.path
+        querystring = request.GET.copy()
+
+        # If the new URL has an existing query string, set (or override
+        # existing) values with the new ones explicitly provided.
+        if '?' in url:
+            url, new_qs = url.split('?', 1)
+            for key, value in QueryDict(new_qs):
+                querystring.setlist(key, value)
+
+        # Preserve the admin's "_popup" variable which may have originate in
+        # the POST QueryDict.
+        if '_popup' in request.POST or '_popup' in request.REQUEST:
+            querystring['_popup'] = 1
+
+        if querystring:
+            url = '%s?%s' % (url, querystring.urlencode())
+        return url
+
     def response_add(self, request, obj, post_url_continue='../%s/'):
         """
         Determines the HttpResponse for the add_view stage.
@@ -714,33 +739,41 @@ class ModelAdmin(BaseModelAdmin):
         opts = obj._meta
         pk_value = obj._get_pk_val()
 
+        # Handle proxy models automatically created by .only() or .defer()
+        verbose_name = opts.verbose_name
+        if obj._deferred:
+            opts_ = opts.proxy_for_model._meta
+            verbose_name = opts_.verbose_name
+
         msg = _('The %(name)s "%(obj)s" was added successfully.') % {'name': force_unicode(opts.verbose_name), 'obj': force_unicode(obj)}
         # Here, we distinguish between different save types by checking for
         # the presence of keys in request.POST.
+
         if "_continue" in request.POST:
             self.message_user(request, msg + ' ' + _("You may edit it again below."))
-            if "_popup" in request.POST:
-                post_url_continue += "?_popup=1"
-            return HttpResponseRedirect(post_url_continue % pk_value)
-
-        if "_popup" in request.POST:
+            url = self.url_with_querystring(request,
+                                            post_url_continue % pk_value)
+        elif "_addanother" in request.POST:
+            self.message_user(request, msg + ' ' + (_("You may add another %s below.") % force_unicode(opts.verbose_name)))
+            url = self.url_with_querystring(request)
+        elif "_saveasnew" in request.POST:
+            msg = _('The %(name)s "%(obj)s" was added successfully. You may edit it again below.') % {'name': force_unicode(verbose_name), 'obj': obj}
+            self.message_user(request, msg)
+            return HttpResponseRedirect(self.url_with_querystring(request, "../%s/" % pk_value))
+        elif "_popup" in request.POST:
             return HttpResponse('<script type="text/javascript">opener.dismissAddAnotherPopup(window, "%s", "%s");</script>' % \
                 # escape() calls force_unicode.
                 (escape(pk_value), escapejs(obj)))
-        elif "_addanother" in request.POST:
-            self.message_user(request, msg + ' ' + (_("You may add another %s below.") % force_unicode(opts.verbose_name)))
-            return HttpResponseRedirect(request.path)
         else:
             self.message_user(request, msg)
-
             # Figure out where to redirect. If the user has change permission,
             # redirect to the change-list page for this object. Otherwise,
             # redirect to the admin index.
             if self.has_change_permission(request, None):
-                post_url = '../'
+                url = '../'
             else:
-                post_url = '../../../'
-            return HttpResponseRedirect(post_url)
+                url = '../../../'
+        return HttpResponseRedirect(url)
 
     def response_change(self, request, obj):
         """
@@ -759,17 +792,10 @@ class ModelAdmin(BaseModelAdmin):
         msg = _('The %(name)s "%(obj)s" was changed successfully.') % {'name': force_unicode(verbose_name), 'obj': force_unicode(obj)}
         if "_continue" in request.POST:
             self.message_user(request, msg + ' ' + _("You may edit it again below."))
-            if "_popup" in request.REQUEST:
-                return HttpResponseRedirect(request.path + "?_popup=1")
-            else:
-                return HttpResponseRedirect(request.path)
-        elif "_saveasnew" in request.POST:
-            msg = _('The %(name)s "%(obj)s" was added successfully. You may edit it again below.') % {'name': force_unicode(verbose_name), 'obj': obj}
-            self.message_user(request, msg)
-            return HttpResponseRedirect("../%s/" % pk_value)
+            return HttpResponseRedirect(self.url_with_querystring(request, request.path))
         elif "_addanother" in request.POST:
             self.message_user(request, msg + ' ' + (_("You may add another %s below.") % force_unicode(verbose_name)))
-            return HttpResponseRedirect("../add/")
+            return HttpResponseRedirect(self.url_with_querystring(request, "../add/"))
         else:
             self.message_user(request, msg)
             # Figure out where to redirect. If the user has change permission,
@@ -779,6 +805,7 @@ class ModelAdmin(BaseModelAdmin):
                 return HttpResponseRedirect('../')
             else:
                 return HttpResponseRedirect('../../../')
+
 
     def response_action(self, request, queryset):
         """
