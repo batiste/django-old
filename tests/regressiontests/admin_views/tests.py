@@ -28,6 +28,7 @@ from django.utils.html import escape
 from django.utils.http import urlencode
 from django.utils.translation import activate, deactivate
 from django.utils import unittest
+from django.http import QueryDict
 
 # local test models
 from models import (Article, BarAccount, CustomArticle, EmptyModel,
@@ -2133,7 +2134,7 @@ class AdminPreserveQSTest(TestCase):
     def check_redirect(self, response):
         self.assertEqual(response.status_code, 302)
         location = urlparse.urlparse(response['Location'])
-        return urlparse.parse_qs(location.query)
+        return QueryDict(location.query)
 
     def test_response_add(self):
         url = '/test_admin/admin/admin_views/article/add/'
