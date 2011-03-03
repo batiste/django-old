@@ -13,7 +13,6 @@ from django.db import models, transaction, router
 from django.db.models.related import RelatedObject
 from django.db.models.fields import BLANK_CHOICE_DASH, FieldDoesNotExist
 from django.db.models.sql.constants import LOOKUP_SEP, QUERY_TERMS
-from django.db import models, transaction
 from django.shortcuts import get_object_or_404, render_to_response
 from django.http import Http404, HttpResponse, HttpResponseRedirect, QueryDict
 from django.utils.decorators import method_decorator
