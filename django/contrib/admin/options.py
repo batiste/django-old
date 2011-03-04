@@ -737,14 +737,9 @@ class ModelAdmin(BaseModelAdmin):
         """
         opts = obj._meta
         pk_value = obj._get_pk_val()
-
-        # Handle proxy models automatically created by .only() or .defer()
         verbose_name = opts.verbose_name
-        if obj._deferred:
-            opts_ = opts.proxy_for_model._meta
-            verbose_name = opts_.verbose_name
 
-        msg = _('The %(name)s "%(obj)s" was added successfully.') % {'name': force_unicode(opts.verbose_name), 'obj': force_unicode(obj)}
+        msg = _('The %(name)s "%(obj)s" was added successfully.') % {'name': force_unicode(verbose_name), 'obj': force_unicode(obj)}
         # Here, we distinguish between different save types by checking for
         # the presence of keys in request.POST.
 
@@ -753,7 +748,7 @@ class ModelAdmin(BaseModelAdmin):
             url = self.url_with_querystring(request,
                                             post_url_continue % pk_value)
         elif "_addanother" in request.POST:
-            self.message_user(request, msg + ' ' + (_("You may add another %s below.") % force_unicode(opts.verbose_name)))
+            self.message_user(request, msg + ' ' + (_("You may add another %s below.") % force_unicode(verbose_name)))
             url = self.url_with_querystring(request)
         elif "_saveasnew" in request.POST:
             msg = _('The %(name)s "%(obj)s" was added successfully. You may edit it again below.') % {'name': force_unicode(verbose_name), 'obj': obj}
@@ -785,8 +780,6 @@ class ModelAdmin(BaseModelAdmin):
         if obj._deferred:
             opts_ = opts.proxy_for_model._meta
             verbose_name = opts_.verbose_name
-
-        pk_value = obj._get_pk_val()
 
         msg = _('The %(name)s "%(obj)s" was changed successfully.') % {'name': force_unicode(verbose_name), 'obj': force_unicode(obj)}
         if "_continue" in request.POST:
